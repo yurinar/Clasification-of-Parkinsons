@@ -263,19 +263,19 @@ def main():
 
             torch.cuda.empty_cache()
 
-            # test
-            if fold_num == 0:
-                net.load_state_dict(torch.load('{}/fold_{}/epoch_{}.npz'.format(out_path, 1, best_epoch2)))
-                test1_log = test(args, test1_loader, net)
+        # test
+        if fold_num == 0:
+            net.load_state_dict(torch.load('{}/fold_{}/epoch_{}.npz'.format(out_path, 1, best_epoch2)))
+            test1_log = test(args, test1_loader, net)
 
-                net.load_state_dict(torch.load('{}/fold_{}/epoch_{}.npz'.format(out_path, 1, best_epoch1)))
-                test2_log = test(args, test2_loader, net)
-            else:
-                net.load_state_dict(torch.load('{}/fold_{}/epoch_{}.npz'.format(out_path, 2, best_epoch2)))
-                test3_log = test(args, test1_loader, net)
+            net.load_state_dict(torch.load('{}/fold_{}/epoch_{}.npz'.format(out_path, 1, best_epoch1)))
+            test2_log = test(args, test2_loader, net)
+        else:
+            net.load_state_dict(torch.load('{}/fold_{}/epoch_{}.npz'.format(out_path, 2, best_epoch2)))
+            test3_log = test(args, test1_loader, net)
 
-                net.load_state_dict(torch.load('{}/fold_{}/epoch_{}.npz'.format(out_path, 2, best_epoch1)))
-                test4_log = test(args, test2_loader, net)
+            net.load_state_dict(torch.load('{}/fold_{}/epoch_{}.npz'.format(out_path, 2, best_epoch1)))
+            test4_log = test(args, test2_loader, net)
 
     # accuracy
     log = np.concatenate((test1_log, test2_log, test3_log, test4_log), axis=0)

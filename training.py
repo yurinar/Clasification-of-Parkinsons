@@ -33,7 +33,7 @@ class Dataset(torch.utils.data.Dataset):
 
         data_del_row = np.delete(np.array(data), obj=0, axis=0) # delete 0 row
         data_input = np.delete(data_del_row, obj=[0, 17], axis=1) # delete 0&17 colums
-        data_target = data_del_row[:,17]
+        data_target = data_del_row[:,17] # answer labels
 
         self.input = Subset(data_input, namelist)
         self.target = Subset(data_target, namelist)
@@ -43,13 +43,13 @@ class Dataset(torch.utils.data.Dataset):
     
     def __getitem__(self, i):
         input = torch.from_numpy(self.input[i].astype(np.float32))
-        target = torch.from_numpy(np.array(self.target[i], dtype=np.int32)).long()
+        target = torch.from_numpy(np.array(self.target[i], dtype=np.int32)).long() # int & long -> for Softmax cross entropy
         return input, target
 
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.fc1 = nn.Linear(22, 50)
+        self.fc1 = nn.Linear(22, 50) # 22 -> features
         self.fc2 = nn.Linear(50, 2)
 
     def forward(self, x):
@@ -90,9 +90,21 @@ def parse_args():
                         help='Random seed')
 
     args = parser.parse_args()
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu) # set device
 
     return args
+
+def Split_index(data_size, fold_size):
+    # Make size list
+    N, mod = divmod(data_size, 2 * fold_size)
+    size = [N + 1 if i < mod else N for i in range(2 * fold_size)]
+
+    # Split index
+    index = list(range(0, data_size))
+    dataset_1, dataset_2, dataset_3, dataset_4 = torch.utils.data.random_split(index, size)
+    dataset = (dataset_1, dataset_2, dataset_3, dataset_4)
+
+    return dataset
 
 def Make_list(fold_num, dataset):
 
@@ -123,7 +135,7 @@ def training(args, train_loader, model, criterion, optimizer):
         input = input.cuda()
         target = target.cuda()
 
-        # compute output
+        # Compute output
         output = model(input)
         loss = criterion(output, target)
     
@@ -135,7 +147,7 @@ def training(args, train_loader, model, criterion, optimizer):
 def validate(args, val_loader, model, criterion):
     losses = AverageMeter()
 
-    # switch to evaluate mode
+    # Switch to evaluate mode
     model.eval()
 
     with torch.no_grad():
@@ -143,7 +155,7 @@ def validate(args, val_loader, model, criterion):
             input = input.cuda()
             target = target.cuda()
 
-            # compute output
+            # Compute output
             output = model(input)
             loss = criterion(output, target)
 
@@ -156,7 +168,7 @@ def validate(args, val_loader, model, criterion):
     return log
 
 def test(args, test_loader, model):
-    # switch to evaluate mode
+    # Switch to evaluate mode
     model.eval()
 
     log = []
@@ -164,7 +176,7 @@ def test(args, test_loader, model):
         for input, target in test_loader:
             input = input.cuda()
 
-            # compute output
+            # Compute output
             output = model(input)
             x = softmax(output).max(1)[1].data.cpu().numpy()
             
@@ -188,10 +200,10 @@ def main():
     if not os.path.isdir(out_path):
         os.makedirs(out_path)
 
-    # device
+    # Device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # seed
+    # Added for reproducibility
     seed = args.seed
     random.seed(seed)
     np.random.seed(seed)
@@ -199,17 +211,15 @@ def main():
 
     if device == 'cuda':
         torch.cuda.manual_seed(seed)
-
-    # Added for reproducibility
-    cudnn.deterministic = True
+    
     print("Deterministic cuDNN is",cudnn.deterministic)
+    cudnn.deterministic = True
 
     # 2-fold cross validation
-    index = list(range(0, 195))
-    dataset_1, dataset_2, dataset_3, dataset_4 = torch.utils.data.random_split(index, [49, 49, 49, 48])
-    dataset = (dataset_1, dataset_2, dataset_3, dataset_4)
-
+    data_size = 195
     fold_size = 2
+    dataset = Split_index(data_size, fold_size)
+   
     accuracy = []
     for fold_num in range(fold_size):
         if not os.path.isdir('{}/fold_{}'.format(out_path, fold_num + 1)):
@@ -233,11 +243,11 @@ def main():
         test1_loader = DataLoader(test1, test1.__len__(), shuffle=False)
         test2_loader = DataLoader(test2, test2.__len__(), shuffle=False)
 
-        # model
+        # Model
         net = Net()
         net.to(device)
 
-        # define loss function and optimier
+        # Define loss function and optimier
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(net.parameters(),lr=0.001)
 
@@ -245,12 +255,12 @@ def main():
         best_val2 = 1
         best_epoch1 = 1
         best_epoch2 = 1
-        # train
+        # Train
         for epoch in range(args.epoch):
             training(args, train_loader, net, criterion, optimizer)
             val1_log = validate(args, test1_loader, net, criterion)
             val2_log = validate(args, test2_loader, net, criterion)
-
+            
             if val1_log['loss'] < best_val1:
                 best_val1 = val1_log['loss']
                 best_epoch1 = epoch + 1
@@ -263,7 +273,7 @@ def main():
 
             torch.cuda.empty_cache()
 
-        # test
+        # Test
         if fold_num == 0:
             net.load_state_dict(torch.load('{}/fold_{}/epoch_{}.npz'.format(out_path, 1, best_epoch2)))
             test1_log = test(args, test1_loader, net)
@@ -277,7 +287,7 @@ def main():
             net.load_state_dict(torch.load('{}/fold_{}/epoch_{}.npz'.format(out_path, 2, best_epoch1)))
             test4_log = test(args, test2_loader, net)
 
-    # accuracy
+    # Accuracy
     log = np.concatenate((test1_log, test2_log, test3_log, test4_log), axis=0)
     count = 0
     for i in range(len(log)):
@@ -285,11 +295,13 @@ def main():
             count += 1
     accu = count / int(len(log))
     accuracy.append(accu)
-    print(accu)
+    print('Accuracy : {}'.format(accu))
 
+    # Save answer and predict labels of test
     log = pd.DataFrame(log, columns=['GT', 'predict'])
     log.to_csv('{}/test_log_{}.csv'.format(out_path, seed), index=False)
 
+    # Save mean accuracy of test
     accuracy = pd.DataFrame(accuracy, columns=['Accuracy'])
     accuracy.to_csv('{}/accuracy.csv'.format(out_path), index=False)
 
